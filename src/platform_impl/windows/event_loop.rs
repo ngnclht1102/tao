@@ -2339,14 +2339,17 @@ unsafe extern "system" fn thread_event_target_callback<T: 'static>(
           // inside of the `event_handler` callback.
           let _ = RedrawWindow(Some(window), None, None, RDW_INTERNALPAINT);
         } else {
-          // This WM_PAINT handler will never be re-entrant because `flush_paint_messages`
-          // doesn't call WM_PAINT for the thread event target (i.e. this window).
-          assert!(flush_paint_messages(
-            None,
-            &subclass_input.event_loop_runner
-          ));
-          subclass_input.event_loop_runner.redraw_events_cleared();
-          process_control_flow(&subclass_input.event_loop_runner);
+          // This WM_PAINT handler is normally never re-entrant because `flush_paint_messages`
+          // doesn't call WM_PAINT for the thread event target (i.e. this window). In rare cases
+          // (nested win32 modal loops, e.g. around device-change events) it can be re-entered;
+          // previously this was an `assert!` which crashed the app (tauri-apps/tao#1140). The
+          // outer invocation will finish flushing, so just skip instead of panicking.
+          if flush_paint_messages(None, &subclass_input.event_loop_runner) {
+            subclass_input.event_loop_runner.redraw_events_cleared();
+            process_control_flow(&subclass_input.event_loop_runner);
+          } else {
+            log::warn!("flush_paint_messages re-entered on the thread event target; skipping");
+          }
         }
       }
 
