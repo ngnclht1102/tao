@@ -368,7 +368,12 @@ impl<T> EventLoopRunner<T> {
         self.call_event_handler(Event::LoopDestroyed);
       }
 
-      (Destroyed, _) => panic!("cannot move state from Destroyed"),
+      // Stray window messages can still be dispatched after the runner is destroyed
+      // (e.g. a subclassed wndproc pumped during teardown); previously this was a
+      // `panic!` which crashed the app on exit. The loop is gone, so just ignore them.
+      (Destroyed, _) => {
+        warn!("window message received after the event loop was destroyed; ignoring");
+      }
     }
   }
 
