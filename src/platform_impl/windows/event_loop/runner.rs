@@ -242,8 +242,15 @@ impl<T> EventLoopRunner<T> {
   unsafe fn call_event_handler(&self, event: Event<'_, T>) {
     self.catch_unwind(|| {
             let mut control_flow = self.control_flow.take();
-            let mut event_handler = self.event_handler.take()
-                .expect("either event handler is re-entrant (likely), or no event handler is registered (very unlikely)");
+            // The handler is already taken, i.e. this is a re-entrant dispatch: a window
+            // message pumped from inside the handler itself (a subclassed wndproc during
+            // teardown, a modal loop). Previously an `expect` that crashed the app; there
+            // is nothing to dispatch to, so put the control flow back and drop the event.
+            let Some(mut event_handler) = self.event_handler.take() else {
+                warn!("event handler re-entered; dropping the nested event");
+                self.control_flow.set(control_flow);
+                return;
+            };
 
             if let ControlFlow::ExitWithCode(code) = control_flow  {
                 event_handler(event, &mut ControlFlow::ExitWithCode(code));

@@ -706,7 +706,11 @@ fn subclass_event_target_window<T>(
       THREAD_EVENT_TARGET_SUBCLASS_ID,
       input_ptr as usize,
     );
-    assert!(subclass_result.as_bool());
+    // Subclassing can fail when the window is already gone or the OS refuses the hook.
+    // Previously an assert that crashed the app; carry on without the hook instead.
+    if !subclass_result.as_bool() {
+      log::warn!("SetWindowSubclass failed for the thread event target");
+    }
 
     tx
   }
@@ -754,7 +758,10 @@ pub(crate) fn subclass_window<T>(window: HWND, subclass_input: SubclassInput<T>)
       input_ptr as usize,
     )
   };
-  assert!(subclass_result.as_bool());
+  // See the thread-event-target case above: a failed hook is not worth a crash.
+  if !subclass_result.as_bool() {
+    log::warn!("SetWindowSubclass failed for window {window:?}");
+  }
 }
 
 fn remove_window_subclass<T: 'static>(window: HWND) {
